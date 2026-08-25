@@ -1,0 +1,25 @@
+{
+  "name": "nourun-wa-bridge",
+  "description": "WhatsApp bridge for Nourun — isolated process, speaks newline-delimited JSON over stdio or WebSocket.",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts"
+  },
+  "comment": [
+    "Deliberately NOT a member of the root workspace: `@whiskeysockets/baileys` is",
+    "GPL-3.0 and must never land in the engine's node_modules. Install it here, on",
+    "its own:  cd plugins/wa-bridge && bun install",
+    "This package shares no code with the rest of the repo — the wire protocol in",
+    "src/protocol.ts is the entire interface, hand-copied from",
+    "packages/shared/src/types/bridge.ts and checked by the `hello` version field."
+  ],
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "7.0.0-rc13"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0"
+  }
+}
