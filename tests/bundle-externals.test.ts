@@ -76,7 +76,7 @@ describe("a built bundle", () => {
 describe("how the bridge is launched", () => {
   test("the spawn command disables Bun's auto-install", () => {
     const source = readFileSync(
-      join(BRIDGE_ROOT, "../../apps/engine/src/gateways/bridge.ts"),
+      join(BRIDGE_ROOT, "../../apps/engine/src/modules/gateways/bridge.ts"),
       "utf-8",
     );
     // Asserted on the source because the resolver walks the filesystem for a bridge that is not
