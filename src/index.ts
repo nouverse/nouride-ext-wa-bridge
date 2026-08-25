@@ -30,11 +30,22 @@ import makeWASocket, {
   type WAMessage,
   type WASocket,
 } from "@whiskeysockets/baileys";
-import { Boom } from "@hapi/boom";
 import { proto } from "@whiskeysockets/baileys";
 import { BRIDGE_PROTOCOL_VERSION, type BridgeCommand, type BridgeEvent } from "./protocol.ts";
 import { useEncryptedAuthState, type EncryptedAuthState } from "./auth.ts";
 import { cleanMentionText, extractMentions } from "./mentions.ts";
+
+/**
+ * The one field this bridge reads off whatever Baileys threw.
+ *
+ * A disconnect arrives as `lastDisconnect.error`, and Baileys puts the reason in
+ * `output.statusCode` because it throws `@hapi/boom` errors. Typed structurally rather than by
+ * importing `Boom`: this is the only property ever read, and the import was buying a *type* from
+ * `@hapi/boom@10` while the object producing it comes from the `@hapi/boom@9` nested under Baileys.
+ * The two agree on `statusCode` today, which is exactly the kind of thing that is fine until it is
+ * not — and it cost this plugin a direct dependency, in a plugin whose point is having almost none.
+ */
+type DisconnectError = { output?: { statusCode?: number } };
 
 /**
  * stdout belongs to the protocol, so nothing else may write to it.
@@ -267,7 +278,7 @@ async function start(): Promise<void> {
       if (connection !== "close") return;
       linked = false;
 
-      const status = (lastDisconnect?.error as Boom | undefined)?.output?.statusCode;
+      const status = (lastDisconnect?.error as DisconnectError | undefined)?.output?.statusCode;
 
       // `loggedOut` is the one that is not a network problem: the phone unlinked this device, and the
       // stored credentials are now worthless. Reconnecting with them loops forever, so the session is

@@ -16,7 +16,6 @@
     "packages/shared/src/types/bridge.ts and checked by the `hello` version field."
   ],
   "dependencies": {
-    "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "7.0.0-rc13"
   },
   "devDependencies": {
