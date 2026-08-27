@@ -20,14 +20,31 @@ bun install
 bun test          # session round-trip and at-rest encryption
 ```
 
+## Build
+
+It ships as a **compiled executable** with the Bun runtime inside it, so a server running the bridge
+needs no Bun installed. `build:binary` stages one into the release tarball automatically; build one
+on its own with:
+
+```sh
+bun run build:wa-bridge                       # → dist/wa-bridge/wa-bridge
+bun run build:wa-bridge --target linux-x64    # → dist/wa-bridge-linux-x64.tar.gz
+```
+
+The target matters, and it did not when this was a JavaScript bundle: a binary built for the wrong
+architecture or libc fails with `Exec format error` at the first connection. `scripts/build-wa-bridge.ts`
+carries the rest — why four of Baileys' peers are deliberately left out, and what compiling them in
+would break.
+
 ## Running
 
 The engine spawns it and speaks the protocol; you should not need to run it by hand. To watch a
-pairing code without the daemon:
+pairing code without the daemon (`version` must match `BRIDGE_PROTOCOL_VERSION` in `src/protocol.ts`,
+or the bridge rejects the handshake and says so):
 
 ```sh
 NOURUN_WA_SESSION_KEY=$(openssl rand -hex 32) \
-  sh -c 'echo "{\"type\":\"hello\",\"version\":1,\"sessionDir\":\"/tmp/wa\"}"; sleep 30' \
+  sh -c 'echo "{\"type\":\"hello\",\"version\":3,\"sessionDir\":\"/tmp/wa\"}"; sleep 30' \
   | bun run src/index.ts
 ```
 
