@@ -1,6 +1,6 @@
 {
-  "name": "nourun-wa-bridge",
-  "description": "WhatsApp bridge for Nourun — isolated process, speaks newline-delimited JSON over stdio or WebSocket.",
+  "name": "nouride-wa-bridge",
+  "description": "WhatsApp bridge for Nouride — isolated process, speaks newline-delimited JSON over stdio or WebSocket.",
   "version": "0.1.0",
   "private": true,
   "type": "module",

@@ -53,10 +53,10 @@ describe("a built bridge", () => {
   const built = [
     join(BRIDGE_ROOT, "../../dist/wa-bridge/wa-bridge"),
     join(BRIDGE_ROOT, "../../dist/wa-bridge-linux-x64/wa-bridge/wa-bridge"),
-    join(BRIDGE_ROOT, "../../dist/nourun-linux-x64/wa-bridge/wa-bridge"),
+    join(BRIDGE_ROOT, "../../dist/nouride-linux-x64/wa-bridge/wa-bridge"),
     // The pre-executable bundle, still checked where one is lying around.
     join(BRIDGE_ROOT, "../../dist/wa-bridge/index.js"),
-    join(BRIDGE_ROOT, "../../dist/nourun-linux-x64/wa-bridge/index.js"),
+    join(BRIDGE_ROOT, "../../dist/nouride-linux-x64/wa-bridge/index.js"),
   ].filter(existsSync);
 
   test.skipIf(built.length === 0)("carries no reference to a native module", () => {

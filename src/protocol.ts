@@ -2,7 +2,7 @@
  * Wire protocol — a hand-maintained copy of
  * `packages/shared/src/types/bridge.ts`.
  *
- * Do NOT replace this with an import from `@nourun/shared`. This process links
+ * Do NOT replace this with an import from `@nouride/shared`. This process links
  * against GPL-3.0 code and sharing a module with the engine is precisely the link
  * the separation exists to avoid. Keep the two files in step by hand; the `hello`
  * handshake checks the version so a drift fails loudly.

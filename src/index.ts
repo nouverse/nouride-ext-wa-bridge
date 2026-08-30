@@ -84,7 +84,7 @@ function emit(event: BridgeEvent): void {
  * printed four pino objects before any protocol event.
  *
  * `silent` by default rather than off entirely, because a session that will not link is diagnosed
- * from exactly these lines. `NOURUN_WA_LOG_LEVEL=debug` turns them on, on stderr, where the engine
+ * from exactly these lines. `NOURIDE_WA_LOG_LEVEL=debug` turns them on, on stderr, where the engine
  * already forwards them into the daemon log.
  */
 const LOG_LEVELS = ["trace", "debug", "info", "warn", "error", "fatal"] as const;
@@ -118,8 +118,8 @@ function note(message: string, detail?: unknown): void {
   );
 }
 
-const sessionDirFromEnv = process.env.NOURUN_WA_SESSION_DIR ?? "";
-const sessionKey = process.env.NOURUN_WA_SESSION_KEY ?? "";
+const sessionDirFromEnv = process.env.NOURIDE_WA_SESSION_DIR ?? "";
+const sessionKey = process.env.NOURIDE_WA_SESSION_KEY ?? "";
 
 let socket: WASocket | null = null;
 let auth: EncryptedAuthState | null = null;
@@ -228,13 +228,13 @@ async function start(): Promise<void> {
       // See makeLogger: without this, Baileys writes pino JSON to stdout and corrupts the protocol.
       // `warn` by default, matching the reference implementations. Silent was a mistake: the one thing
       // that would have explained a message accepted and never delivered is Baileys' own warning, and
-      // it was being thrown away. `NOURUN_WA_LOG_LEVEL=debug` turns it all the way up.
-      logger: makeLogger(process.env.NOURUN_WA_LOG_LEVEL ?? "warn") as never,
+      // it was being thrown away. `NOURIDE_WA_LOG_LEVEL=debug` turns it all the way up.
+      logger: makeLogger(process.env.NOURIDE_WA_LOG_LEVEL ?? "warn") as never,
       // We forward it instead. Printing to stdout would corrupt the protocol stream, and printing to
       // a terminal nobody is watching is why this field exists at all.
       printQRInTerminal: false,
       // Named, so the entry under Linked devices on the phone says what it is rather than "Ubuntu".
-      browser: ["Nourun", "Chrome", "120.0"],
+      browser: ["Nouride", "Chrome", "120.0"],
       // Left offline on purpose: an account marked online stops delivering push notifications to the
       // phone that owns it.
       markOnlineOnConnect: false,
@@ -445,7 +445,7 @@ function sendTarget(chatId: string): { to: string; resolved: boolean } {
  * wrap every send in a timeout for exactly this reason; failing loudly at sixty seconds is what lets
  * the engine buffer and retry instead of the whole gateway going quiet.
  */
-const SEND_TIMEOUT_MS = Number(process.env.NOURUN_WA_SEND_TIMEOUT_MS ?? 60_000);
+const SEND_TIMEOUT_MS = Number(process.env.NOURIDE_WA_SEND_TIMEOUT_MS ?? 60_000);
 
 function withTimeout<T>(work: Promise<T>, what: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
@@ -661,7 +661,7 @@ async function handle(command: BridgeCommand): Promise<void> {
     if (!sessionKey) {
       emit({
         type: "error",
-        message: "NOURUN_WA_SESSION_KEY is not set — refusing to write an unencrypted session",
+        message: "NOURIDE_WA_SESSION_KEY is not set — refusing to write an unencrypted session",
       });
       process.exit(1);
     }
