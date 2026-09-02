@@ -783,7 +783,18 @@ async function handle(command: BridgeCommand): Promise<void> {
             : kind === "video"
               ? { video: fileBuffer, caption }
               : kind === "audio"
-                ? { audio: fileBuffer, mimetype: command.mimeType }
+                ? {
+                    audio: fileBuffer,
+                    mimetype: command.mimeType,
+                    /**
+                     * Push-to-talk. The single field that separates a voice note from an audio file.
+                     *
+                     * Without it WhatsApp shows a file row with a play button; with it, the round
+                     * voice bubble with the waveform. The engine says which was meant — the mime type
+                     * cannot, since both are `audio/ogg`.
+                     */
+                    ...(command.voice ? { ptt: true } : {}),
+                  }
                 : {
                     document: fileBuffer,
                     mimetype: command.mimeType,

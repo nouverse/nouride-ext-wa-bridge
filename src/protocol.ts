@@ -13,7 +13,24 @@ export const BRIDGE_PROTOCOL_VERSION = 3;
 export type BridgeCommand =
   | { type: "hello"; version: number; sessionDir: string }
   | { type: "send"; id: string; chatId: string; text: string; replyTo?: string; mentions?: string[] }
-  | { type: "send_media"; id: string; chatId: string; path: string; mimeType: string; caption?: string; mentions?: string[] }
+  /**
+   * `voice` is what makes WhatsApp render a voice note rather than an audio file.
+   *
+   * Carried as its own field because the bridge decides the media kind from the **mime type**
+   * (`audio/ogg` → audio), and `audio/ogg` is what both an audio file and a voice note are. The
+   * engine knows which one the agent asked for and that intent had nowhere to travel, so a voice note
+   * arrived as a plain audio message with no push-to-talk bubble.
+   */
+  | {
+      type: "send_media";
+      id: string;
+      chatId: string;
+      path: string;
+      mimeType: string;
+      caption?: string;
+      mentions?: string[];
+      voice?: boolean;
+    }
   | { type: "typing"; chatId: string }
   /** Mark an inbound message read — sent only once the engine has accepted it. */
   | { type: "read"; chatId: string; messageId: string; participant?: string }
