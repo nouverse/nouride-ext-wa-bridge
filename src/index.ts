@@ -18,6 +18,8 @@
  * the reason it is encrypted rather than plain.
  */
 
+import * as io from "./io.ts";
+import { BridgeExit } from "./io.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -72,7 +74,7 @@ for (const level of ["log", "info", "warn", "error", "debug", "trace"] as const)
 }
 
 function emit(event: BridgeEvent): void {
-  process.stdout.write(`${JSON.stringify(event)}\n`);
+  io.write(JSON.stringify(event));
 }
 
 /**
@@ -118,8 +120,28 @@ function note(message: string, detail?: unknown): void {
   );
 }
 
-const sessionDirFromEnv = process.env.NOURIDE_WA_SESSION_DIR ?? "";
-const sessionKey = process.env.NOURIDE_WA_SESSION_KEY ?? "";
+let sessionDirFromEnv = process.env.NOURIDE_WA_SESSION_DIR ?? "";
+/**
+ * Read from the environment, because that is how a spawned bridge is given it.
+ *
+ * `let`, not `const`, for the in-process host — which must not use the environment at all. Putting
+ * the session key into the daemon's own `process.env` would hand it to every command the agent runs
+ * through `exec`, since a child inherits the parent's environment. `configure()` passes it directly
+ * instead, so it exists only in this module.
+ */
+let sessionKey = process.env.NOURIDE_WA_SESSION_KEY ?? "";
+
+/**
+ * Supply what the environment would have carried, for a bridge running inside another process.
+ *
+ * Only the in-process host calls this; standalone reads the environment as before. The session
+ * directory still arrives over the protocol in `hello` and still wins over this — the engine holds
+ * the config — so this is really about the key.
+ */
+export function configure(input: { sessionDir?: string; encryptionKey: string }): void {
+  sessionKey = input.encryptionKey;
+  if (input.sessionDir) sessionDirFromEnv = input.sessionDir;
+}
 
 let socket: WASocket | null = null;
 let auth: EncryptedAuthState | null = null;
@@ -647,7 +669,7 @@ async function handle(command: BridgeCommand): Promise<void> {
         type: "error",
         message: `protocol version mismatch: engine ${command.version}, bridge ${BRIDGE_PROTOCOL_VERSION}`,
       });
-      process.exit(1);
+      io.exit(1);
     }
     handshakeDone = true;
 
@@ -656,14 +678,14 @@ async function handle(command: BridgeCommand): Promise<void> {
     sessionDir = command.sessionDir || sessionDirFromEnv;
     if (!sessionDir) {
       emit({ type: "error", message: "no session directory was given" });
-      process.exit(1);
+      io.exit(1);
     }
     if (!sessionKey) {
       emit({
         type: "error",
         message: "NOURIDE_WA_SESSION_KEY is not set — refusing to write an unencrypted session",
       });
-      process.exit(1);
+      io.exit(1);
     }
 
     try {
@@ -682,7 +704,7 @@ async function handle(command: BridgeCommand): Promise<void> {
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = null;
     teardown();
-    process.exit(0);
+    io.exit(0);
   }
 
   if (!handshakeDone) {
@@ -823,36 +845,34 @@ async function handle(command: BridgeCommand): Promise<void> {
 }
 
 /**
- * `process.stdin` rather than `Bun.stdin`, so this runs under Node as well.
+ * Feed one protocol line in. The engine's in-process host calls this; `main.ts` calls it per line
+ * read from stdin.
  *
- * That is not hypothetical tidiness: Baileys leans on Node crypto and stream APIs, and being able to
- * run the bridge on Node while the engine stays pure Bun is half of why the boundary in §6 is drawn
- * where it is.
- *
- * Commands are handled one at a time. `send` awaits the network, and processing the next line
- * concurrently would let two replies to the same chat race into the wrong order.
+ * Commands are handled one at a time by the caller, and that is load-bearing: `send` awaits the
+ * network, and processing the next line concurrently would let two replies to the same chat race
+ * into the wrong order.
  */
-const decoder = new TextDecoder();
-let buffer = "";
-
-process.stdin.on("end", () => {
-  // The engine went away. Staying alive would leave an orphan holding the WhatsApp session, which
-  // then fights the next bridge for the same credentials.
-  stopping = true;
-  process.exit(0);
-});
-
-for await (const chunk of process.stdin) {
-  buffer += decoder.decode(chunk as Uint8Array, { stream: true });
-  let index: number;
-  while ((index = buffer.indexOf("\n")) >= 0) {
-    const line = buffer.slice(0, index).trim();
-    buffer = buffer.slice(index + 1);
-    if (!line) continue;
-    try {
-      await handle(JSON.parse(line) as BridgeCommand);
-    } catch (err) {
-      emit({ type: "error", message: `malformed command: ${String(err)}` });
-    }
+export async function handleLine(line: string): Promise<void> {
+  const trimmed = line.trim();
+  if (!trimmed) return;
+  try {
+    await handle(JSON.parse(trimmed) as BridgeCommand);
+  } catch (err) {
+    if (err instanceof BridgeExit) throw err;
+    emit({ type: "error", message: `malformed command: ${String(err)}` });
   }
+}
+
+/**
+ * Tear the connection down without ending the host.
+ *
+ * Only the in-process host needs this: standalone, the process going away is the teardown. Here the
+ * daemon may drop a WhatsApp gateway and keep running, and a socket left open would fight the next
+ * bridge for the same credentials — the same reason `stdin`'s `end` handler exists in `main.ts`.
+ */
+export function stopBridge(): void {
+  stopping = true;
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+  teardown();
 }
