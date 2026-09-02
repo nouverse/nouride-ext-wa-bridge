@@ -1,6 +1,6 @@
 {
   "name": "nouride-wa-bridge",
-  "description": "WhatsApp bridge for Nouride — isolated process, speaks newline-delimited JSON over stdio or WebSocket.",
+  "description": "WhatsApp bridge for Nouride \u2014 isolated process, speaks newline-delimited JSON over stdio or WebSocket.",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "Deliberately NOT a member of the root workspace: `@whiskeysockets/baileys` is",
     "GPL-3.0 and must never land in the engine's node_modules. Install it here, on",
     "its own:  cd plugins/wa-bridge && bun install",
-    "This package shares no code with the rest of the repo — the wire protocol in",
+    "This package shares no code with the rest of the repo \u2014 the wire protocol in",
     "src/protocol.ts is the entire interface, hand-copied from",
     "packages/shared/src/types/bridge.ts and checked by the `hello` version field."
   ],
@@ -20,5 +20,9 @@
   },
   "devDependencies": {
     "@types/node": "^26.2.0"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./io": "./src/io.ts"
   }
 }
