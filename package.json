@@ -15,13 +15,20 @@
     "src/protocol.ts is the entire interface, hand-copied from",
     "packages/shared/src/types/bridge.ts and checked by the `hello` version field.",
     "`libsignal` is aliased to a local shim that forwards to `whatsapp-rust-bridge` (MIT).",
-    "",
     "`overrides.libsignal` points the npm package of that name at a local shim which",
     "forwards to `whatsapp-rust-bridge` (MIT). The real package is GPL-3.0 and is the only",
     "reason a binary carrying this bridge is a combined work \u2014 Baileys itself is MIT.",
     "An `overrides` entry rather than a plain dependency alias: Baileys depends on",
     "`libsignal` itself, so bun installs a second copy under its own node_modules and a",
-    "root alias never reaches it. See docs/rfc/PLAN_REPLACE_LIBSIGNAL.md in the parent repo."
+    "root alias never reaches it.",
+    "See docs/rfc/PLAN_REPLACE_LIBSIGNAL.md in the parent repository.",
+    "",
+    "`file:` COPIES the directory at install time, so an edit to the shim does not reach a",
+    "build until `bun install` runs again. That cost three deploys to a live box: the tests",
+    "imported the shim by relative path and passed against the source while the binary",
+    "shipped a stale copy. `tests/libsignal-shim.test.ts` imports it by PACKAGE NAME now, so",
+    "a stale copy is a red suite rather than a silent wrong binary.",
+    "See docs/rfc/PLAN_REPLACE_LIBSIGNAL.md in the parent repository."
   ],
   "dependencies": {
     "@whiskeysockets/baileys": "7.0.0-rc13",

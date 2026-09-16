@@ -26,8 +26,8 @@ import {
   encrypt,
   hash,
   verifyMAC,
-} from "../shims/libsignal/src/crypto.js";
-import { PreKeyWhisperMessage } from "../shims/libsignal/src/protobufs.js";
+} from "libsignal/src/crypto.js";
+import { PreKeyWhisperMessage } from "libsignal/src/protobufs.js";
 
 const bytes = (hex: string): Buffer => Buffer.from(hex, "hex");
 
@@ -186,8 +186,108 @@ describe("Baileys' repository runs on the shim", () => {
      * throwing**, returning an empty record. Baileys would then hold a session that claims to exist
      * and cannot do anything, which is worse than having none.
      */
-    const { SessionRecord } = await import("../shims/libsignal/index.js");
+    const { SessionRecord } = await import("libsignal");
     const legacy = SessionRecord.deserialize({ _sessions: { some: {} }, version: "v1" });
     expect(legacy.haveOpenSession()).toBe(false);
+  });
+});
+
+/**
+ * The error text Baileys keys its session recovery on.
+ *
+ * `decode-wa-message.js` matches exactly two patterns and sets `isSessionRecordError` on a hit,
+ * which is what makes it send a retry receipt — and a retry receipt is what makes the phone re-send
+ * as `pkmsg`, re-establishing the session. The Rust bridge's `SessionNotFound(...)` matches neither,
+ * so a live box sat there failing every inbound message identically until this translation existed.
+ */
+describe("two parties, and what a missing session says", () => {
+  /**
+   * A full X3DH handshake through the shim, both directions.
+   *
+   * Worth the setup. Everything else here checks a part; this checks that the parts compose into
+   * working Signal crypto — Alice initiates, Bob decrypts her `pkmsg` and gets the plaintext back,
+   * then Bob replies with a `msg`. A shim that forwards correctly but wires the storage wrongly
+   * passes every other test in this file and fails this one.
+   *
+   * It also produces the one thing the last test needs and cannot fake: a genuine `msg` ciphertext.
+   */
+  async function handshake() {
+    const rs = await import("whatsapp-rust-bridge");
+    const { SessionCipher, SessionBuilder } = await import("libsignal");
+
+    const store = (identity: { privKey: Uint8Array; pubKey: Uint8Array }, map: Map<string, unknown>, keys?: Record<string, unknown>) => ({
+      loadSession: async (id: string) => map.get(id) ?? null,
+      storeSession: async (id: string, record: unknown) => void map.set(id, record),
+      getOurIdentity: () => ({ privKey: identity.privKey, pubKey: identity.pubKey }),
+      getOurRegistrationId: () => 1,
+      isTrustedIdentity: () => true,
+      /**
+       * The shapes **Baileys** returns, not the ones the bridge declares.
+       *
+       * This is the whole point of the adapter, and using the bridge's own shapes here is how the
+       * first version of this test passed while a live box failed every inbound `pkmsg` with
+       * `InvalidState("load_signed_pre_key", "Missing signature bytes")`. Baileys answers
+       * `loadSignedPreKey` with a bare `{privKey, pubKey}` — no keyId, no signature.
+       */
+      loadPreKey: async () => (keys?.pre ? { privKey: (keys.pre as never as { keyPair: { privKey: Uint8Array } }).keyPair.privKey, pubKey: (keys.pre as never as { keyPair: { pubKey: Uint8Array } }).keyPair.pubKey } : null),
+      removePreKey: async () => {},
+      loadSignedPreKey: async () => (keys?.signed ? { privKey: (keys.signed as never as { keyPair: { privKey: Uint8Array } }).keyPair.privKey, pubKey: (keys.signed as never as { keyPair: { pubKey: Uint8Array } }).keyPair.pubKey } : null),
+      loadSenderKey: async () => null,
+      storeSenderKey: async () => {},
+    });
+
+    const alice = rs.generateKeyPair();
+    const bob = rs.generateKeyPair();
+    const bobSigned = rs.generateKeyPair();
+    const bobPre = rs.generateKeyPair();
+    const signature = rs.calculateSignature(bob.privKey, bobSigned.pubKey);
+    const bobKeys = { signed: { keyId: 1, keyPair: bobSigned, signature }, pre: { keyId: 2, keyPair: bobPre } };
+
+    const aliceStore = new Map<string, unknown>();
+    const bobStore = new Map<string, unknown>();
+    const aliceAddr = new rs.ProtocolAddress("alice", 0);
+    const bobAddr = new rs.ProtocolAddress("bob", 0);
+
+    await new SessionBuilder(store(alice, aliceStore), bobAddr).initOutgoing({
+      registrationId: 2,
+      identityKey: bob.pubKey,
+      signedPreKey: { keyId: 1, publicKey: bobSigned.pubKey, signature },
+      preKey: { keyId: 2, publicKey: bobPre.pubKey },
+    } as never);
+
+    const opening = await new SessionCipher(store(alice, aliceStore), bobAddr).encrypt(Buffer.from("one"));
+    const opened = await new SessionCipher(store(bob, bobStore, bobKeys), aliceAddr)
+      .decryptPreKeyWhisperMessage(opening.body);
+    const reply = await new SessionCipher(store(bob, bobStore, bobKeys), aliceAddr).encrypt(Buffer.from("two"));
+
+    return { rs, SessionCipher, store, alice, bobAddr, opening, opened, reply };
+  }
+
+  test("a message encrypted by one side decrypts on the other", async () => {
+    const { opening, opened, reply } = await handshake();
+    expect(opening.type).toBe(3); // pkmsg — the first message on a new session
+    expect(Buffer.from(opened).toString()).toBe("one");
+    expect(reply.type).toBe(2); // and the answer continues it rather than starting again
+  });
+
+  test("SessionNotFound is reported as `SessionError: No session record`", async () => {
+    /**
+     * The exact substring `isSessionRecordError` tests for, pinned because Baileys matches **text**:
+     *
+     *     sessionRecordErrors: ['No session record', 'SessionError: No session record']
+     *
+     * A match is what makes it send a retry receipt, and a retry receipt is what makes the phone
+     * re-send as `pkmsg` and re-establish the session. The bridge's own `SessionNotFound(...)`
+     * matches neither, so a live box failed every inbound message identically, twice across two
+     * deploys, with nothing in the log saying why.
+     */
+    const { SessionCipher, store, alice, bobAddr, reply } = await handshake();
+
+    const orphaned = new SessionCipher(store(alice, new Map()), bobAddr);
+    const failure = await orphaned.decryptWhisperMessage(reply.body).catch((e: unknown) => e);
+
+    expect(String((failure as Error)?.message ?? failure)).toContain("No session record");
+    // The original is kept, so a real diagnosis is still one `.cause` away.
+    expect(String((failure as Error)?.cause ?? "")).toContain("SessionNotFound");
   });
 });

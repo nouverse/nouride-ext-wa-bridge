@@ -22,6 +22,7 @@
  */
 
 import {
+  calculateSignature,
   ProtocolAddress,
   SessionBuilder as RustSessionBuilder,
   SessionCipher as RustSessionCipher,
@@ -67,16 +68,51 @@ export class SessionRecord extends RustSessionRecord {
 }
 
 /**
- * The same storage, with `loadSession` answering in bytes.
+ * A Signal public key as the protocol carries it: 33 bytes, `0x05` then the raw point.
  *
- * `record.serialize()` on the way past, because a record is what Baileys hands back and bytes are
- * what the bridge asks for. A record that is already bytes is passed through untouched, so a caller
- * that does the right thing to begin with is not punished for it — and `null`/`undefined` mean "no
- * session", which both sides agree on.
+ * Baileys stores the raw 32 and prefixes at the boundary — `generateSignalPubKey` — so anything it
+ * hands back has to be prefixed again before it is signed or verified.
  */
-function bytesLoading(storage) {
+function prefixed(pubKey) {
+  if (pubKey.length !== 32) return pubKey;
+  const out = new Uint8Array(33);
+  out[0] = 5;
+  out.set(pubKey, 1);
+  return out;
+}
+
+/**
+ * Baileys' storage, adapted to the contract the Rust bridge declares.
+ *
+ * Two shapes disagree, and both were found by a live box rather than by reading:
+ *
+ * `loadSession` — Baileys answers with a **record**, because that is what the JS `libsignal` did;
+ * the bridge asks for bytes. A record that is already bytes passes through untouched.
+ *
+ * `loadSignedPreKey` — Baileys answers with a bare `{privKey, pubKey}`; the bridge wants
+ * `{keyId, keyPair, signature}` and refuses without the signature (`InvalidState("load_signed_pre_key",
+ * "Missing signature bytes")`, which is where every inbound `pkmsg` stopped). The signature is
+ * **recomputed, not invented**: Baileys made it as `sign(identityPrivate, prefixed(preKeyPublic))`
+ * — `signedKeyPair` in its `Utils/crypto.js` — and both halves are reachable from this storage, so
+ * the same call reproduces the same bytes.
+ *
+ * `loadPreKey` needs nothing: the bridge asks for a `KeyPair`, which is what Baileys already returns.
+ */
+function adapted(storage) {
   return {
     ...storage,
+    loadSignedPreKey: async (id) => {
+      const key = await storage.loadSignedPreKey(id);
+      if (!key) return null;
+      // Already the bridge's shape — a caller that does the right thing is not punished for it.
+      if (key.keyPair) return key;
+      const identity = await storage.getOurIdentity();
+      return {
+        keyId: id,
+        keyPair: { privKey: key.privKey, pubKey: key.pubKey },
+        signature: calculateSignature(identity.privKey, prefixed(key.pubKey)),
+      };
+    },
     loadSession: async (address) => {
       const record = await storage.loadSession(address);
       if (record === null || record === undefined) return null;
@@ -89,14 +125,59 @@ function bytesLoading(storage) {
   };
 }
 
+/**
+ * What Baileys looks for when it decides a decrypt failure is recoverable.
+ *
+ * `decode-wa-message.js` matches the error text against exactly two patterns:
+ *
+ *     sessionRecordErrors: ['No session record', 'SessionError: No session record']
+ *
+ * A match sets `isSessionRecordError`, which is what makes it send a retry receipt — and a retry
+ * receipt is what makes the phone re-send as `pkmsg` with a bundle, re-establishing the session.
+ *
+ * The Rust bridge says `SessionCipher.decryptWhisperMessage failed: SessionNotFound(...)`, which
+ * matches neither. Without this translation the recovery never fires: the phone keeps sending
+ * `type='msg'` for a session only the cipher disagrees about, every message fails the same way, and
+ * nothing in the log says why. That is not hypothetical — it is what a live box did for eight
+ * minutes across two deploys.
+ */
+const NO_SESSION = "SessionError: No session record";
+
+function translate(error) {
+  const text = String(error?.message ?? error ?? "");
+  if (!text.includes("SessionNotFound")) return error;
+  const translated = new Error(NO_SESSION);
+  translated.cause = error;
+  return translated;
+}
+
 export class SessionCipher extends RustSessionCipher {
   constructor(storage, remoteAddress) {
-    super(bytesLoading(storage), remoteAddress);
+    super(adapted(storage), remoteAddress);
+  }
+
+  // Both decrypt entry points, because `msg` and `pkmsg` take different ones and either can arrive
+  // first. `encrypt` is left alone: a missing session there is a caller error, not something a retry
+  // receipt can fix.
+  async decryptWhisperMessage(ciphertext) {
+    try {
+      return await super.decryptWhisperMessage(ciphertext);
+    } catch (error) {
+      throw translate(error);
+    }
+  }
+
+  async decryptPreKeyWhisperMessage(ciphertext) {
+    try {
+      return await super.decryptPreKeyWhisperMessage(ciphertext);
+    } catch (error) {
+      throw translate(error);
+    }
   }
 }
 
 export class SessionBuilder extends RustSessionBuilder {
   constructor(storage, remoteAddress) {
-    super(bytesLoading(storage), remoteAddress);
+    super(adapted(storage), remoteAddress);
   }
 }

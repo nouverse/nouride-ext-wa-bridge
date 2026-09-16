@@ -137,3 +137,35 @@ describeAuth("at rest", () => {
     expect(readdirSync(dir).filter((f) => f.endsWith(".enc"))).toHaveLength(0);
   });
 });
+
+/**
+ * A session written before the Rust signal backend must read as absent.
+ *
+ * Not "present and empty", which is what the shim alone produced and what broke a live box: Baileys
+ * reaches `loadSession` from places the signal layer does not wrap, saw a record, and skipped the
+ * re-handshake — so the phone kept sending `type='msg'` for a session only the cipher disagreed
+ * about, and every message failed with `SessionNotFound`.
+ */
+describeAuth("sessions from before the Rust signal backend", () => {
+  test("read as missing, and the file is removed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wa-legacy-"));
+    try {
+      const key = KEY;
+      const first = await useEncryptedAuthState(dir, key);
+      // The shape the old implementation wrote.
+      await first.state.keys.set({ session: { "62811.0": { _sessions: { a: {} }, version: "v1" } } as never });
+      // And one the new one writes, which must survive.
+      await first.state.keys.set({ session: { "62822.0": Buffer.from([1, 2, 3]) } as never });
+
+      const reopened = await useEncryptedAuthState(dir, key);
+      const got = await reopened.state.keys.get("session", ["62811.0", "62822.0"]);
+
+      expect(got["62811.0"]).toBeUndefined();
+      expect(got["62822.0"]).toEqual(Buffer.from([1, 2, 3]) as never);
+      expect(readdirSync(dir).some((f) => f.startsWith("session-62811.0"))).toBe(false);
+      expect(readdirSync(dir).some((f) => f.startsWith("session-62822.0"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

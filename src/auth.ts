@@ -78,6 +78,25 @@ export interface EncryptedAuthState {
   read: <T>(name: string) => T | null;
 }
 
+/**
+ * A session record written by the JS `libsignal`, which the Rust backend cannot read.
+ *
+ * The two serialisations are unrelated: a bespoke JSON object against Signal's `SessionStructure`
+ * protobuf. Recognised by shape — the old one is an object with `_sessions` and `version`, the
+ * replacement stores a Buffer — so no version marker has to be invented for records that already
+ * exist on disk.
+ */
+function isLegacySession(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Buffer.isBuffer(value) &&
+    !(value instanceof Uint8Array) &&
+    "_sessions" in value &&
+    "version" in value
+  );
+}
+
 export async function useEncryptedAuthState(
   dir: string,
   keyHex: string,
@@ -118,6 +137,20 @@ export async function useEncryptedAuthState(
           const out: { [id: string]: SignalDataTypeMap[typeof type] } = {};
           for (const id of ids) {
             let value = readData<SignalDataTypeMap[typeof type]>(`${type}-${id}`);
+            /**
+             * A pre-Rust session has to look **absent**, not present-and-empty.
+             *
+             * Dropped here, at the store, because Baileys reaches `loadSession` from places the
+             * signal layer does not wrap — `validateSession` is one — and a record that looks
+             * present there makes it skip the re-handshake. That is exactly what happened: the phone
+             * went on sending `type='msg'` for a session only the cipher disagreed about, and every
+             * message failed with `SessionNotFound`. Deleted rather than merely hidden, so the next
+             * read is a plain miss and the file stops being a thing to explain.
+             */
+            if (type === "session" && isLegacySession(value)) {
+              rmSync(fileFor(dir, `${type}-${id}`), { force: true });
+              value = null;
+            }
             // Baileys stores this one as a protobuf and expects it back as one.
             if (type === "app-state-sync-key" && value) {
               value = proto.Message.AppStateSyncKeyData.fromObject(
