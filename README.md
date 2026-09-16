@@ -66,9 +66,45 @@ A session written before this change cannot be read, and `src/auth.ts` drops one
 absent rather than empty. The ratchet re-negotiates on the next message; pairing is untouched,
 because `creds` is a separate file.
 
-This is a stopgap. [WhiskeySockets/Baileys#2067](https://github.com/WhiskeySockets/Baileys/pull/2067)
-does the same migration upstream and keeps the old on-disk format, so nothing re-negotiates — drop
-the shim when it lands.
+### This is a stopgap — upstream is doing it properly
+
+[**WhiskeySockets/Baileys#2067 — `feat: libsignal wasm`**](https://github.com/WhiskeySockets/Baileys/pull/2067)
+
+| | |
+|---|---|
+| state | **open**, not a draft |
+| opened | 2025-11-16 |
+| last touched | 2026-08-06 |
+| size | +6,903 / −3,505 across 75 commits |
+| ships in | nothing yet — `7.0.0-rc14`, the newest release, still depends on `libsignal ^6.0.0` |
+
+It replaces the JS `libsignal` with the same Rust core this shim forwards to, and it is the better
+answer in three ways that matter here.
+
+**It keeps the on-disk format.** In their words: *"Sessions and group sender keys are written in the
+shape a pre-WASM release reads, not as the bridge's bytes. Rolling back is swapping the package: no
+conversion step, no migration."* Nothing re-negotiates, which is the one cost this shim does not
+avoid. It buys that for about 0.3 ms per message — a trade worth taking, and one that needed access
+to the record model rather than a package name.
+
+**It fixes a real bug.** Session operations become pure functions over a snapshot, so nothing calls
+back into JS mid-operation and an operation cannot re-enter the caller's transaction. That
+re-entrancy is what produced `message with old counter` failures under load. Identity rows are also
+locked alongside the session, which had let an encrypt and a decrypt run concurrently on one session.
+
+**It is several times faster.** Their benchmark, direct messages at 300/s: p50 2.62 ms → **0.59 ms**,
+peak RSS 293 MB → **200 MB**. Group receive is where their counter fix lands hardest — a stored row
+going from 199,724 bytes to 441.
+
+None of that was available, so this shim exists. When #2067 lands in a release:
+
+1. Drop `overrides.libsignal` and `dependencies.libsignal` from `package.json`.
+2. Delete `shims/libsignal/` and `tests/libsignal-shim.test.ts`.
+3. Drop `isLegacySession` from `src/auth.ts` — their reader accepts both shapes, so the records this
+   shim wrote should still be readable, but that rests on a caveat in their implementation rather
+   than a guarantee. Worth confirming on a live box before deleting the guard.
+4. Re-check the dependency tree for GPL-3.0 code, because the whole point of the shim is that it was
+   there once.
 
 ## Install
 
