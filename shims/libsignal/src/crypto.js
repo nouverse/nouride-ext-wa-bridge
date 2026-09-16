@@ -7,9 +7,10 @@
  *
  * `deriveSecrets` is transcribed from the shape the protocol needs and not from a licensed source:
  * HKDF-Extract with the salt as key, then three HKDF-Expand rounds whose info block is
- * `T(n-1) || info || n`. `crypto-known-answers.test.ts` pins all four against fixed vectors, because
- * a crypto function that is subtly wrong fails as "the other end closed the session" three layers
- * away from here.
+ * `T(n-1) || info || n`. `tests/libsignal-shim.test.ts` pins all of them against vectors frozen from the
+ * real `libsignal` — frozen rather than compared live, because the point of this shim is that the
+ * real package stops being installed. A crypto function that is subtly wrong fails as "the other end
+ * closed the session", three layers away from here.
  */
 
 import nodeCrypto from "node:crypto";

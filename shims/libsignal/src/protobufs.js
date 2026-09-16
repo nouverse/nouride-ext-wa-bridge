@@ -40,7 +40,12 @@ function readVarint(bytes, at) {
 
 export const PreKeyWhisperMessage = {
   /**
-   * Returns `{ identityKey }` — a Uint8Array, or undefined when the field is not present.
+   * Returns `{ identityKey }` — a Uint8Array, **empty** when the field is not present.
+   *
+   * Empty rather than undefined because that is what the real decoder does, and the two are compared
+   * against each other on 300 encoded messages. The only consumer tests `?.length === 33`, which
+   * answers false either way, but matching the oracle exactly is cheaper than arguing that a
+   * difference is harmless.
    *
    * Every other field is skipped by wire type rather than parsed, so an unknown or reordered field
    * does not derail the scan. An unrecognised wire type throws, and the caller reads that the same
@@ -49,7 +54,7 @@ export const PreKeyWhisperMessage = {
   decode(bytes) {
     const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     let at = 0;
-    let identityKey;
+    let identityKey = new Uint8Array(0);
 
     while (at < buf.length) {
       const { value: key, next } = readVarint(buf, at);

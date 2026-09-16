@@ -13,10 +13,19 @@
     "its own:  cd plugins/wa-bridge && bun install",
     "This package shares no code with the rest of the repo \u2014 the wire protocol in",
     "src/protocol.ts is the entire interface, hand-copied from",
-    "packages/shared/src/types/bridge.ts and checked by the `hello` version field."
+    "packages/shared/src/types/bridge.ts and checked by the `hello` version field.",
+    "`libsignal` is aliased to a local shim that forwards to `whatsapp-rust-bridge` (MIT).",
+    "",
+    "`overrides.libsignal` points the npm package of that name at a local shim which",
+    "forwards to `whatsapp-rust-bridge` (MIT). The real package is GPL-3.0 and is the only",
+    "reason a binary carrying this bridge is a combined work \u2014 Baileys itself is MIT.",
+    "An `overrides` entry rather than a plain dependency alias: Baileys depends on",
+    "`libsignal` itself, so bun installs a second copy under its own node_modules and a",
+    "root alias never reaches it. See docs/rfc/PLAN_REPLACE_LIBSIGNAL.md in the parent repo."
   ],
   "dependencies": {
-    "@whiskeysockets/baileys": "7.0.0-rc13"
+    "@whiskeysockets/baileys": "7.0.0-rc13",
+    "libsignal": "file:./shims/libsignal"
   },
   "devDependencies": {
     "@types/node": "^26.2.0"
@@ -24,5 +33,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./io": "./src/io.ts"
+  },
+  "overrides": {
+    "libsignal": "file:./shims/libsignal"
   }
 }
