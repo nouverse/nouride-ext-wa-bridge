@@ -99,36 +99,27 @@ describe("a built bridge", () => {
  * Asserted against the source because the resolver walks the filesystem for a bridge that is not
  * there in a test environment. The claims are worth pinning either way.
  */
-describe("how the bridge is launched", () => {
+/**
+ * The engine no longer launches the bridge at all.
+ *
+ * It used to search four directories for a `wa-bridge` executable the tarball shipped beside the
+ * daemon, spawn it, and pipe newline-delimited JSON to it. Every edition bundles the bridge
+ * in-process now, so there is no second executable, no search and no spawn — and the four tests that
+ * pinned that search are gone with it.
+ *
+ * What replaces them is the assertion that it cannot come back by accident: the engine reaches the
+ * bridge through one dynamic import, and `bridge-inproc.test.ts` owns that edge.
+ */
+describe("nothing spawns the bridge any more", () => {
   const source = readFileSync(
     join(BRIDGE_ROOT, "../../apps/engine/src/modules/gateways/bridge.ts"),
     "utf-8",
   );
 
-  test("looks for the compiled executable before anything interpreted", () => {
-    const compiled = source.indexOf('{ path: "wa-bridge/wa-bridge", compiled: true }');
-    const bundle = source.indexOf('{ path: "wa-bridge/index.js", compiled: false }');
-    expect(compiled).toBeGreaterThan(-1);
-    expect(bundle).toBeGreaterThan(-1);
-    expect(compiled).toBeLessThan(bundle);
-  });
-
-  test("spawns the compiled bridge bare — no `bun` in front of it", () => {
-    // The name has to match what `build-wa-bridge.ts` writes, and nothing else checks that pair.
-    expect(source).toContain("if (isExecutableFile(path)) return [path];");
-  });
-
-  test("checks the executable bit rather than trusting the file is there", () => {
-    // A tarball unpacked by something that drops the mode leaves a path that stats perfectly and
-    // fails at spawn with `EACCES` — a WhatsApp gateway that will not start, three layers from
-    // the cause.
-    expect(source).toContain("isExecutableFile");
-  });
-
-  test("still disables Bun's auto-install on the script paths", () => {
-    // Unchanged and still load-bearing for a source checkout: the reason is in the block comment
-    // above `BUN` in that file, and it cost a live box a fatal, uncatchable resolution error.
-    expect(source).toMatch(/const BUN = \["bun", "--no-install"\]/);
-    expect(source).toContain('[...BUN, "run", path]');
+  test("no candidate search, no spawn, no `bun` in front of anything", () => {
+    expect(source).not.toContain("wa-bridge/wa-bridge");
+    expect(source).not.toContain("spawnLongLived");
+    expect(source).not.toContain("isExecutableFile");
+    expect(source).not.toMatch(/const BUN = /);
   });
 });
