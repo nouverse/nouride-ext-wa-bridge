@@ -54,11 +54,19 @@ export function hash(data) {
 }
 
 /**
- * RFC 5869, returning the first `chunks` 32-byte blocks.
+ * HKDF (RFC 5869), returning the first `chunks` blocks of output.
  *
- * The info block is built once and mutated between rounds — `infoArray` holds `T(n-1) || info || n`,
- * and the first round takes only the `info || 1` tail because `T(0)` is empty. That layout is what
- * the protocol expects, so it is copied exactly rather than tidied.
+ * Written from the RFC rather than from any implementation: extract once with the salt as the HMAC
+ * key, then expand with `T(n) = HMAC(PRK, T(n-1) || info || n)`, `T(0)` empty. SHA-256, so each
+ * block is 32 bytes.
+ *
+ * The one thing that is not the RFC is the ceiling of three blocks, which is a property of the
+ * caller rather than of HKDF — the protocol asks for at most three — and refusing more is better
+ * than returning something nobody has checked.
+ *
+ * Pinned by known-answer vectors in `tests/libsignal-shim.test.ts`. That matters more here than
+ * anywhere else in this file: a KDF that is subtly wrong produces keys that are merely different,
+ * and the failure arrives as "the other end closed the session".
  */
 export function deriveSecrets(input, salt, info, chunks) {
   assertBuffer(input);
@@ -66,21 +74,17 @@ export function deriveSecrets(input, salt, info, chunks) {
   assertBuffer(info);
   if (salt.byteLength !== 32) throw new Error("Got salt of incorrect length");
 
-  const rounds = chunks ?? 3;
-  if (rounds < 1 || rounds > 3) throw new Error("Got chunks of incorrect length");
+  const blocks = chunks ?? 3;
+  if (blocks < 1 || blocks > 3) throw new Error("Got chunks of incorrect length");
 
   const prk = calculateMAC(salt, input);
-  const infoArray = new Uint8Array(info.byteLength + 1 + 32);
-  infoArray.set(info, 32);
-  infoArray[infoArray.length - 1] = 1;
-
-  const signed = [calculateMAC(prk, Buffer.from(infoArray.slice(32)))];
-  for (let round = 2; round <= rounds; round += 1) {
-    infoArray.set(signed[signed.length - 1]);
-    infoArray[infoArray.length - 1] = round;
-    signed.push(calculateMAC(prk, Buffer.from(infoArray)));
+  const out = [];
+  let previous = Buffer.alloc(0);
+  for (let counter = 1; counter <= blocks; counter += 1) {
+    previous = calculateMAC(prk, Buffer.concat([previous, info, Buffer.from([counter])]));
+    out.push(previous);
   }
-  return signed;
+  return out;
 }
 
 export function verifyMAC(data, key, mac, length) {

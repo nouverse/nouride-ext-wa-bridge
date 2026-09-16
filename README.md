@@ -171,3 +171,13 @@ Runs under Bun or Node — `process.stdin`, not `Bun.stdin`. That is not tidines
 Node's crypto and stream APIs, and Bun logs warnings about unimplemented `ws` events. Bun works
 today; if a WhatsApp connection misbehaves in a way the engine does not, try Node before suspecting
 the protocol.
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
+
+MIT rather than the proprietary licence the engine carries, because this module is useful on its own
+and shares no code with it: the entire coupling is the wire protocol. The dependencies are MIT too,
+and `shims/libsignal/` exists so that stays true — the npm package `libsignal` is GPL-3.0 and is not
+installed. Nothing here is derived from it; correctness is pinned by known-answer vectors rather than
+by shared code.

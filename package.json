@@ -1,7 +1,8 @@
 {
   "name": "nouride-wa-bridge",
-  "description": "WhatsApp bridge for Nouride \u2014 isolated process, speaks newline-delimited JSON over stdio or WebSocket.",
+  "description": "WhatsApp bridge for Nouride \u2014 its own module, speaking newline-delimited JSON to a host that compiles it in or reaches it over a WebSocket.",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
