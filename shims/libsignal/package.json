@@ -1,0 +1,26 @@
+{
+  "name": "libsignal",
+  "version": "6.0.0",
+  "private": true,
+  "type": "module",
+  "comment": [
+    "A stand-in for the npm package `libsignal`, which is GPL-3.0 and is the only",
+    "reason a binary containing the WhatsApp bridge is a combined work. Baileys",
+    "itself is MIT.",
+    "",
+    "Everything here forwards to `whatsapp-rust-bridge` — MIT, published by the",
+    "Baileys organisation, already a dependency of Baileys and already used by its",
+    "utility layer. Baileys is mid-migration onto it; this finishes the last piece",
+    "ahead of upstream rather than reimplementing anything.",
+    "",
+    "Named `libsignal` on purpose. Baileys imports the package by name in four",
+    "places, including three deep imports, and aliasing the name is what lets those",
+    "run unmodified — see docs/rfc/PLAN_REPLACE_LIBSIGNAL.md §4."
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./src/crypto.js": "./src/crypto.js",
+    "./src/curve.js": "./src/curve.js",
+    "./src/protobufs.js": "./src/protobufs.js"
+  }
+}
